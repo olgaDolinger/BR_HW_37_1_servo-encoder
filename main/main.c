@@ -64,7 +64,9 @@ void app_main(void)
                // pcnt_unit_clear_count(pcnt_unit);   // Приклад дії: скидаємо позицію в 0
             } else {
                 // Кнопку ВІДПУСТИЛИ (рівень 1)
-                toggle_rotation_angle();  // Змінюємо режим обертання (великий/малий кут)
+                if (!long_done) {
+                    toggle_rotation_angle();  // Коротке натискання: змінюємо режим обертання (великий/малий кут)
+                }
                 ESP_LOGI(TAG, "Кнопка відпущена");
             }
         }
