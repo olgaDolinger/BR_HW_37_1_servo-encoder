@@ -25,30 +25,50 @@ void setup_encoder_pcnt(void)
     pcnt_glitch_filter_config_t filter_config = { .max_glitch_ns = 10000 };
     ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(pcnt_unit, &filter_config));
 
-    // Дескриптор каналу лічильника
+    // Режим X4: рахуємо обидва фронти обох сигналів.
+    // Дребезг контактів дає пари +1/-1, які взаємно гасяться, тому значення не "стрибає".
+
+    // Канал A: фронти сигналу A, напрямок за рівнем B
     pcnt_channel_handle_t chan_a = NULL;
-    // Канал рахує фронти сигналу A, а сигнал B визначає напрямок обертання
     pcnt_chan_config_t chan_a_config = {
-        .edge_gpio_num  = ENCODER_GPIO_A,   // Пін, за фронтами якого ведеться рахунок
-        .level_gpio_num = ENCODER_GPIO_B,   // Пін, за рівнем якого визначається напрямок
+        .edge_gpio_num  = ENCODER_GPIO_A,
+        .level_gpio_num = ENCODER_GPIO_B,
     };
     ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_a_config, &chan_a));
 
-    // Передній фронт A: +1, задній фронт A: ігнорувати
-    pcnt_channel_set_edge_action(chan_a,
-        PCNT_CHANNEL_EDGE_ACTION_INCREASE,
-        PCNT_CHANNEL_EDGE_ACTION_HOLD);
+    /* Канал A: обидва фронти A, напрямок залежить від B */
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan_a,
+        PCNT_CHANNEL_EDGE_ACTION_INCREASE,     // Передній фронт A: +1
+        PCNT_CHANNEL_EDGE_ACTION_DECREASE));   // Задній фронт A: -1
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_a,
+        PCNT_CHANNEL_LEVEL_ACTION_KEEP,        // B = 1: напрямок як є
+        PCNT_CHANNEL_LEVEL_ACTION_INVERSE));   // B = 0: напрямок інвертується
 
-    // B = 1: напрямок як є, B = 0: напрямок інвертується
-    pcnt_channel_set_level_action(chan_a,
-        PCNT_CHANNEL_LEVEL_ACTION_KEEP,
-        PCNT_CHANNEL_LEVEL_ACTION_INVERSE);
+    // Канал B: фронти сигналу B, напрямок за рівнем A
+    pcnt_channel_handle_t chan_b = NULL;
+    pcnt_chan_config_t chan_b_config = {
+        .edge_gpio_num  = ENCODER_GPIO_B,
+        .level_gpio_num = ENCODER_GPIO_A,
+    };
+
+    /* Канал B: обидва фронти B, напрямок залежить від A */
+    ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_b_config, &chan_b));
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan_b,
+        PCNT_CHANNEL_EDGE_ACTION_DECREASE,     // Передній фронт B: -1
+        PCNT_CHANNEL_EDGE_ACTION_INCREASE));   // Задній фронт B: +1
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_b,
+        PCNT_CHANNEL_LEVEL_ACTION_KEEP,        // A = 1: напрямок як є
+        PCNT_CHANNEL_LEVEL_ACTION_INVERSE));   // A = 0: напрямок інвертується
+
+   /*  // Внутрішня підтяжка на A і B (на випадок, якщо на модулі немає резисторів)
+    gpio_pullup_en(ENCODER_GPIO_A);
+    gpio_pullup_en(ENCODER_GPIO_B); */
 
     pcnt_unit_enable(pcnt_unit);        // Вмикаємо блок лічильника
     pcnt_unit_clear_count(pcnt_unit);   // Скидаємо лічильник у 0
     pcnt_unit_start(pcnt_unit);         // Запускаємо рахунок
 
-    ESP_LOGI(TAG, "PCNT X1 initialized");
+    ESP_LOGI(TAG, "PCNT X4 initialized");
 }
 
 // Функція ініціалізації піна кнопки

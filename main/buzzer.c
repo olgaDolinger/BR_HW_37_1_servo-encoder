@@ -43,11 +43,15 @@ void buzzer_init(void)
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
 }
 
-/* static void play_note(void){
+void buzzer_alarm(void){
      // Змінюємо частоту ноти
     ledc_set_freq(LEDC_MODE, LEDC_TIMER, NOTE);
     // Встановлюємо 50% заповнення для генерації звуку
     ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY);
+    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);   // Застосовуємо duty (без цього звук не вмикається)
     // Тривалість ноти
     vTaskDelay(pdMS_TO_TICKS(NOTE_DURATION));
-} */
+    // Вимикаємо сигнал після тривалості ноти
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, 0);
+    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+}

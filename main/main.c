@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -20,10 +22,29 @@ static const char *TAG = "ENCODER";
 #define BIG_ROTATION_ANGLE          10       // Великий кут повороту, градуси
 #define SMALL_ROTATION_ANGLE        5        // Малий кут повороту, градуси
 
-int_fast16_t current_rotation_angle = BIG_ROTATION_ANGLE;   // Поточний режим обертання: true = великий кут, false = малий кут
+static int_fast16_t current_rotation_angle = BIG_ROTATION_ANGLE;   // Поточний режим обертання: true = великий кут, false = малий кут
 
-void toggle_rotation_angle(void) {
+static bool angle_out_of_bounds = false;   // Флаг, що вказує, чи кут виходить за межі 0-180 градусів
+static bool alarm_triggered = false;   // Флаг, що вказує, чи було зафіксовано перевищення меж кута
+
+static void toggle_rotation_angle(void) {
     current_rotation_angle = (current_rotation_angle == BIG_ROTATION_ANGLE) ? SMALL_ROTATION_ANGLE : BIG_ROTATION_ANGLE;
+}
+
+static void check_angles(int angle) {
+    if (angle >= 180 || angle <= 0) {
+        ESP_LOGW(TAG, "Angle out of bounds: %d", angle);
+        angle_out_of_bounds = true;
+        if (!alarm_triggered) {
+            buzzer_alarm();
+            alarm_triggered = true;
+        }
+       
+    }else{
+        angle_out_of_bounds = false;
+        alarm_triggered = false;
+    }
+
 }
 
 void app_main(void)
@@ -79,18 +100,20 @@ void app_main(void)
             servo_set_to_start();
         }
 
-        // ---------- Крутимо сервопривід ----------
+        // ---------- Крутимо сервопривід (кожну ітерацію) ----------
+        int count = 0;
+        pcnt_unit_get_count(pcnt_unit, &count);                        // Зчитуємо лічильник
+        count /= ENCODER_COUNTS_PER_DETENT;                            // Відліки X4 -> клацання
+        int angle = count * current_rotation_angle + INITIAL_ANGLE;   // Кут у градусах
+
+        int duty = angle_to_duty(angle);
+        servo_set_duty(duty);
+
+        // ---------- Вивід у лог ----------
         if (++print_cnt >= PRINT_EVERY) {
             print_cnt = 0;
-
-            int count = 0;
-            pcnt_unit_get_count(pcnt_unit, &count);              // Зчитуємо лічильник
-            float angle = count * current_rotation_angle + INITIAL_ANGLE;  // Кут у градусах
-
-            int duty = angle_to_duty(angle);
-            servo_set_duty(duty);
-
-            ESP_LOGI(TAG, "pos=%d steps, angle=%.1f deg, duty=%d", count, angle, duty);
+            ESP_LOGI(TAG, "pos=%d steps, angle=%d deg, duty=%d", count, angle, duty);
+            check_angles(angle);
         }
 
         // Пауза до наступного опитування
